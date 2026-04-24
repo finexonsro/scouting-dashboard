@@ -247,10 +247,10 @@ with tab1:
             return ''
 
         styled = (disp.style
-            .applymap(tier_color, subset=['Final Tier'])
-            .applymap(psv_color, subset=['PSV-99'])
-            .applymap(delta_color, subset=['Δ PSV-99','Δ HSR OTIP','Δ HSR BIP'])
-            .applymap(lambda v: 'color:#EF9A9A' if isinstance(v, float) and not pd.isna(v) and v > 0 else ('color:#81C784' if isinstance(v, float) and not pd.isna(v) and v < 0 else ''), subset=['Δ T→HSR'])
+            .map(tier_color, subset=['Final Tier'])
+            .map(psv_color, subset=['PSV-99'])
+            .map(delta_color, subset=['Δ PSV-99','Δ HSR OTIP','Δ HSR BIP'])
+            .map(lambda v: 'color:#EF9A9A' if isinstance(v, float) and not pd.isna(v) and v > 0 else ('color:#81C784' if isinstance(v, float) and not pd.isna(v) and v < 0 else ''), subset=['Δ T→HSR'])
             .format({
                 'PSV-99': '{:.2f}', 'Final Total': '{:.1f}', 'Physical Score': '{:.1f}',
                 'IFI Index': '{:.3f}', 'Run Quality': '{:.3f}',
