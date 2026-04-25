@@ -260,8 +260,8 @@ with tab1:
             .map(psv_bg, subset=["PSV-99"])
             .map(pos_d,  subset=["Δ PSV-99","Δ HSR OTIP","Δ HSR BIP"])
             .map(neg_d,  subset=["Δ T→HSR"])
-            .format({"PSV-99":":.2f","Final Total":":.1f","Physical Score":":.1f",
-                     "IFI Index":":.3f","Run Quality":":.3f","Dribbling":":.3f","Box Threat":":.3f",
+            .format({"PSV-99":"{:.2f}","Final Total":"{:.1f}","Physical Score":"{:.1f}",
+                     "IFI Index":"{:.3f}","Run Quality":"{:.3f}","Dribbling":"{:.3f}","Box Threat":"{:.3f}",
                      "Δ PSV-99":"{:+.2f}","Δ HSR OTIP":"{:+.0f}",
                      "Δ HSR BIP":"{:+.0f}","Δ T→HSR":"{:+.3f}",
                      "Transferwert (€)":lambda v:f"€{int(v):,}" if pd.notna(v) else "—"},
