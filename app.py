@@ -317,7 +317,7 @@ table{{width:100%;border-collapse:collapse;}}
 </style></head><body>
 <div class="header">
     <h1>{row["Spieler"]}</h1>
-    <p>{row.get("Verein","—")} &nbsp;·&nbsp; {row["Liga"]} &nbsp;·&nbsp; {int(row["Alter"])} Jahre &nbsp;·&nbsp; {int(row["Minuten"])} Minuten &nbsp;·&nbsp; {row.get("Spielertyp","—")}</p>
+    <p>{row.get("Verein","—")} &nbsp;·&nbsp; {row["Liga"]} &nbsp;·&nbsp; {int(row["Alter"])} Jahre &nbsp;·&nbsp; {int(row["Minuten"])} Minuten</p>
     <div class="tier-badge">{tier_str}</div>
 </div>
 <div class="cards">
@@ -367,11 +367,11 @@ with st.sidebar:
 
     st.markdown('<div class="div"></div>', unsafe_allow_html=True)
     st.markdown('<div class="sec">🎯 IFI Gewichtung</div>', unsafe_allow_html=True)
-    st.caption("0 = deaktiviert · 1–10 = relatives Gewicht")
+    st.caption("0=aus · 1=weniger wichtig · 2=mittel · 3=wichtig · 4=sehr wichtig")
     weights = {}
     for a_en, a_de in zip(IFI_ATTRS_EN, IFI_ATTRS_DE):
         weights[a_en] = st.slider(
-            a_de, 0, 4, 1, 1, key=f"w_{a_en}",
+            a_de, 0, 4, 1, 1, key=f"ifi_weight_{a_en}",
             format="%d",
             help="0=aus · 1=weniger wichtig · 2=mittel · 3=wichtig · 4=sehr wichtig"
         )
