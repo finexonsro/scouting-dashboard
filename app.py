@@ -138,7 +138,7 @@ def render_physical_bars(row):
             <div class="pbar-bg">
                 <div style="width:{pct}%;height:10px;border-radius:4px;background:{color};"></div>
             </div>
-            <div class="pbar-info">{val}/{maxv} &nbsp;·&nbsp; +{pts:.1f} Pkte</div>
+            <div class="pbar-info">{val}/{maxv}</div>
         </div>"""
     sf  = str(row.get("Speed Flag","—"))
     dpv = float(row.get("Δ PSV-99", 0))
@@ -271,7 +271,7 @@ def make_pdf_report(row):
                     <div style="background:{color};width:{pct}%;height:10px;border-radius:4px;"></div>
                 </div>
             </td>
-            <td style="padding:6px 8px;font-size:12px;color:#555;">{val}/{maxv} · +{pts:.1f} Pkte</td>
+            <td style="padding:6px 8px;font-size:12px;color:#555;">{val}/{maxv}</td>
         </tr>"""
 
     ifi_rows = ""
@@ -370,7 +370,11 @@ with st.sidebar:
     st.caption("0 = deaktiviert · 1–10 = relatives Gewicht")
     weights = {}
     for a_en, a_de in zip(IFI_ATTRS_EN, IFI_ATTRS_DE):
-        weights[a_en] = st.slider(a_de, 0, 10, 1, 1, key=f"w_{a_en}")
+        weights[a_en] = st.slider(
+            a_de, 0, 4, 1, 1, key=f"w_{a_en}",
+            format="%d",
+            help="0=aus · 1=weniger wichtig · 2=mittel · 3=wichtig · 4=sehr wichtig"
+        )
     active_n = sum(1 for w in weights.values() if w>0)
     st.success(f"{active_n}/8 aktiv") if active_n>0 else st.warning("Alle deaktiviert")
 
@@ -502,7 +506,7 @@ with tab1:
                         <div>
                             <div style="font-size:20px;font-weight:800;color:#FFF;">{row["Spieler"]}</div>
                             <div style="font-size:13px;color:#888;margin-top:4px;">
-                                {row.get("Verein","—")} · {row["Liga"]} · {int(row["Alter"])} J. · {int(row["Minuten"])} min · {row.get("Spielertyp","—")}
+                                {row.get("Verein","—")} · {row["Liga"]} · {int(row["Alter"])} J. · {int(row["Minuten"])} min
                             </div>
                         </div>
                         <div style="background:{t_bg};color:#FFF;padding:6px 14px;
