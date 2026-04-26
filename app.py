@@ -81,8 +81,9 @@ df_raw = load_data()
 def recalc_ifi(df, weights):
     df = df.copy()
     active = {a:w for a,w in weights.items() if w>0}
-    if not active:
-        df["IFI Raw"] = 0.0
+    pct_cols_exist = all(f"Pct_{a}" in df.columns for a in IFI_ATTRS)
+    if not active or not pct_cols_exist:
+        df["IFI Raw"] = df["IFI Percentile"] if "IFI Percentile" in df.columns else 0.5
     else:
         tw = sum(active.values())
         df["IFI Raw"] = sum(
