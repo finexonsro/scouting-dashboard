@@ -376,7 +376,10 @@ with st.sidebar:
             help="0=aus · 1=weniger wichtig · 2=mittel · 3=wichtig · 4=sehr wichtig"
         )
     active_n = sum(1 for w in weights.values() if w>0)
-    st.success(f"{active_n}/8 aktiv") if active_n>0 else st.warning("Alle deaktiviert")
+    if active_n > 0:
+        st.success(f"{active_n}/8 aktiv")
+    else:
+        st.warning("Alle deaktiviert")
 
     st.markdown('<div class="div"></div>', unsafe_allow_html=True)
     sort_col = st.selectbox("Sortieren nach", [
@@ -506,7 +509,7 @@ with tab1:
                         <div>
                             <div style="font-size:20px;font-weight:800;color:#FFF;">{row["Spieler"]}</div>
                             <div style="font-size:13px;color:#888;margin-top:4px;">
-                                {row.get("Verein","—")} · {row["Liga"]} · {int(row["Alter"])} J. · {int(row["Minuten"])} min
+                                {row.get("Verein","—")} · {row["Liga"]} · {int(row["Alter"])} J. · {int(row["Minuten"])} min · {row.get("Spielertyp","—")}
                             </div>
                         </div>
                         <div style="background:{t_bg};color:#FFF;padding:6px 14px;
