@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
+import base64
+from datetime import datetime
 
 st.set_page_config(
     page_title="Jahn Regensburg · Scouting",
@@ -28,7 +30,7 @@ LABEL_STYLE = {
     "STRONG":  ("🟠 STRONG",  "#E65100","#FFFFFF"),
     "AVERAGE": ("🟡 AVERAGE", "#F57F17","#1A1A1A"),
     "BELOW":   ("🔵 BELOW",   "#1565C0","#FFFFFF"),
-    "WEAK":    ("⚫ WEAK",    "#333333","#AAAAAA"),
+    "WEAK":    ("⚫ WEAK",    "#444444","#AAAAAA"),
 }
 TIER_COLORS = {
     "🔥 ELITE TARGET":"#CC0000","🟢 TOP TARGET":"#1B5E20",
@@ -61,15 +63,9 @@ html,body,[class*="css"]{{font-family:'DM Sans',sans-serif;background:{BG};color
     border-radius:8px;padding:14px 12px;text-align:center;margin-bottom:4px;}}
 .jcard .val{{font-family:'DM Mono',monospace;font-size:22px;font-weight:600;color:{W};}}
 .jcard .lbl{{font-size:10px;color:{MUT};letter-spacing:0.1em;text-transform:uppercase;margin-top:4px;}}
-.sec{{font-family:'DM Mono',monospace;font-size:10px;color:{R};
-    letter-spacing:0.15em;text-transform:uppercase;border-bottom:1px solid {C2};
-    padding-bottom:4px;margin-bottom:10px;}}
+.sec{{font-family:'DM Mono',monospace;font-size:10px;color:{R};letter-spacing:0.15em;
+    text-transform:uppercase;border-bottom:1px solid {C2};padding-bottom:4px;margin-bottom:10px;}}
 .div{{height:1px;background:linear-gradient(90deg,{R}66,{C2});margin:10px 0;}}
-.attr-row{{display:flex;justify-content:space-between;align-items:center;
-    padding:5px 0;border-bottom:1px solid #222;}}
-.attr-name{{font-size:12px;color:#CCC;min-width:140px;}}
-.attr-bar-bg{{background:#222;border-radius:4px;height:8px;flex:1;margin:0 10px;}}
-.attr-pct{{font-family:'DM Mono',monospace;font-size:11px;min-width:80px;text-align:right;}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -80,13 +76,12 @@ def load_data():
 B = dict(psv_med=29.45)
 df_raw = load_data()
 
+# ── FUNCTIONS ─────────────────────────────────────────────────────────────────
 def recalc_ifi(df, weights):
     df = df.copy()
     active = {a:w for a,w in weights.items() if w>0}
     pct_ok = all(f"Pct_{a}" in df.columns for a in IFI_ATTRS_EN)
-    if not active or not pct_ok:
-        pass  # keep existing IFI Percentile
-    else:
+    if active and pct_ok:
         tw = sum(active.values())
         raw = sum(df[f"Pct_{a}"].fillna(0)*(w/tw) for a,w in active.items())
         df["IFI Percentile"] = raw.rank(pct=True).round(3)
@@ -100,14 +95,74 @@ def recalc_ifi(df, weights):
         elif s>=12: base="🔵 INTERESTING"
         elif s>=9:  base="🟡 WATCHLIST"
         else:       base="🔴 RISIKO"
-        order=["🔥 ELITE TARGET","🟢 TOP TARGET","🔵 INTERESTING","🟡 WATCHLIST","🔴 RISIKO"]
-        # Gate: BELOW or WEAK → max WATCHLIST
         if r["IFI Label"] in ["BELOW","WEAK"]:
-            idx = max(order.index(base), 3)  # min = WATCHLIST
-            return order[idx]
+            order=["🔥 ELITE TARGET","🟢 TOP TARGET","🔵 INTERESTING","🟡 WATCHLIST","🔴 RISIKO"]
+            return order[max(order.index(base),3)]
         return base
     df["Final Tier"] = df.apply(_tier, axis=1)
     return df
+
+def physical_label(ps):
+    if   ps>=16: return "🔥 ELITE",   "#CC0000"
+    elif ps>=14: return "🟢 TOP",     "#1B5E20"
+    elif ps>=12: return "🔵 INTERESTING","#0D47A1"
+    elif ps>=9:  return "🟡 WATCHLIST","#E65100"
+    else:        return "🔴 RISIKO",  "#4A0D0D"
+
+def make_physical_bars(row):
+    components = [
+        ("⚡ Topgeschwindigkeit", int(row["Speed Score"]),  4, 2.0, "#CC0000"),
+        ("🏃 Pressing-Intensität",int(row["OTIP Score"]),   4, 1.5, "#E65100"),
+        ("💥 Lauf-Intensität",    int(row["BIP Score"]),    4, 1.0, "#1565C0"),
+        ("🚀 Explosivität",       int(row["Burst Score"]),  4, 0.5, "#2E7D32"),
+    ]
+    names   = [c[0] for c in components]
+    scores  = [c[1] for c in components]
+    maxvals = [c[2] for c in components]
+    weights_v=[c[3] for c in components]
+    colors  = [c[4] for c in components]
+    weighted= [s*w for s,w in zip(scores,weights_v)]
+    maxw    = [m*w for m,w in zip(maxvals,weights_v)]
+    pcts    = [w/m*100 for w,m in zip(weighted,maxw)]
+    labels  = [f"{s}/{m}  (+{w:.1f} Pkte)" for s,m,w in zip(scores,maxvals,weighted)]
+
+    fig = go.Figure()
+    # Background bars (max)
+    fig.add_trace(go.Bar(
+        y=names, x=maxw, orientation="h",
+        marker=dict(color="rgba(255,255,255,0.06)", line=dict(width=0)),
+        showlegend=False, hoverinfo="skip",
+    ))
+    # Value bars
+    fig.add_trace(go.Bar(
+        y=names, x=weighted, orientation="h",
+        marker=dict(color=colors, line=dict(width=0)),
+        text=labels, textposition="outside",
+        textfont=dict(color="#CCC", size=11),
+        showlegend=False,
+        hovertemplate="%{y}: %{text}<extra></extra>",
+    ))
+    # Physical score annotation in center
+    total = row["Physical Score"]
+    pl, pc = physical_label(total)
+    fig.update_layout(
+        barmode="overlay",
+        paper_bgcolor="#0D0D0D", plot_bgcolor="#111111",
+        height=220, margin=dict(l=170,r=120,t=40,b=20),
+        xaxis=dict(range=[0,8.5], visible=False),
+        yaxis=dict(tickfont=dict(color="#CCC",size=12), gridcolor="#1A1A1A"),
+        font=dict(family="DM Sans", color="#CCC"),
+        title=dict(
+            text=f"Physical Score: <b>{total:.1f}/20</b> · {pl}",
+            font=dict(size=13, color="#FFF"), x=0
+        ),
+        annotations=[dict(
+            x=8.2, y=i, text=f"<b>{scores[i]}/4</b>",
+            showarrow=False, font=dict(size=11,color="#888"),
+            xanchor="right"
+        ) for i in range(len(names))],
+    )
+    return fig
 
 def make_radar(row, weights):
     active = [a for a,w in weights.items() if w>0]
@@ -117,70 +172,147 @@ def make_radar(row, weights):
         col = f"Pct_{a}"
         if col in row.index:
             vals.append(float(row[col])*100)
-            labels.append(EN_TO_DE.get(a, a))
-    if not vals: return None
-    vals_closed = vals + [vals[0]]
-    labels_closed = labels + [labels[0]]
+            labels.append(EN_TO_DE.get(a,a))
+    if len(vals)<3: return None
+    vals_c = vals+[vals[0]]
+    labs_c = labels+[labels[0]]
     fig = go.Figure()
+    # Fill area
     fig.add_trace(go.Scatterpolar(
-        r=vals_closed, theta=labels_closed, fill="toself",
-        fillcolor="rgba(204,0,0,0.15)",
-        line=dict(color="#CC0000", width=2),
-        name="IFI Profil"
+        r=vals_c, theta=labs_c, fill="toself",
+        fillcolor="rgba(204,0,0,0.18)",
+        line=dict(color="#CC0000",width=2.5),
+        name="Profil", hovertemplate="%{theta}: %{r:.0f}%<extra></extra>"
     ))
+    # Median line at 50%
+    med = [50]*(len(vals)+1)
     fig.add_trace(go.Scatterpolar(
-        r=[50]*len(vals_closed), theta=labels_closed,
-        mode="lines", line=dict(color="#444", width=1, dash="dash"),
-        name="Median (50%)", showlegend=True
+        r=med, theta=labs_c, mode="lines",
+        line=dict(color="#555",width=1,dash="dot"),
+        name="Median (50%)", hoverinfo="skip"
     ))
+    ifi_lbl = row.get("IFI Label","—")
+    em,ic,_ = LABEL_STYLE.get(ifi_lbl,("—","#666","#FFF"))
     fig.update_layout(
         polar=dict(
             bgcolor="#111",
-            radialaxis=dict(visible=True, range=[0,100],
-                           tickfont=dict(color="#555", size=9),
-                           gridcolor="#222", linecolor="#222"),
-            angularaxis=dict(tickfont=dict(color="#CCC", size=11),
-                            gridcolor="#222", linecolor="#333")
+            radialaxis=dict(visible=True,range=[0,100],
+                           tickfont=dict(color="#555",size=8),
+                           gridcolor="#222",linecolor="#222",
+                           tickvals=[25,50,75,100]),
+            angularaxis=dict(tickfont=dict(color="#DDD",size=11),
+                            gridcolor="#222",linecolor="#333")
         ),
-        paper_bgcolor="#0D0D0D", plot_bgcolor="#0D0D0D",
-        font=dict(family="DM Sans", color="#CCC"),
+        paper_bgcolor="#0D0D0D",
+        font=dict(family="DM Sans",color="#CCC"),
         showlegend=True,
-        legend=dict(bgcolor="#111", bordercolor="#222",
-                   font=dict(color="#999", size=10)),
-        margin=dict(l=60,r=60,t=40,b=40),
-        height=380,
+        legend=dict(bgcolor="#111",bordercolor="#222",font=dict(color="#888",size=10)),
+        margin=dict(l=60,r=60,t=50,b=30), height=380,
+        title=dict(text=f"IFI Profil · {em}  ({int(row.get('IFI Percentile',0.5)*100)}. Percentile)",
+                   font=dict(size=12,color=ic),x=0.5)
     )
     return fig
 
-def make_donut(row):
-    speed_s  = int(row["Speed Score"])   * 2.0
-    otip_s   = int(row["OTIP Score"])    * 1.5
-    bip_s    = int(row["BIP Score"])     * 1.0
-    burst_s  = int(row["Burst Score"])   * 0.5
-    labels = ["Topgeschwindigkeit","Pressing-Intensität","Lauf-Intensität","Explosivität"]
-    values = [speed_s, otip_s, bip_s, burst_s]
-    colors = ["#CC0000","#E65100","#1565C0","#2E7D32"]
-    fig = go.Figure(go.Pie(
-        labels=labels, values=values,
-        hole=0.55,
-        marker=dict(colors=colors, line=dict(color="#0D0D0D", width=2)),
-        textinfo="label+value",
-        textfont=dict(size=11, color="#FFF"),
-        hovertemplate="%{label}: %{value:.1f} Pkte<extra></extra>",
-    ))
-    fig.update_layout(
-        paper_bgcolor="#0D0D0D",
-        font=dict(family="DM Sans", color="#CCC"),
-        showlegend=False,
-        margin=dict(l=20,r=20,t=20,b=20),
-        height=340,
-        annotations=[dict(
-            text=f"<b>{row['Physical Score']:.1f}</b><br><span style='font-size:10px'>/20</span>",
-            x=0.5, y=0.5, font=dict(size=20, color="#FFF"),
-            showarrow=False
-        )]
-    )
-    return fig
+def make_pdf_report(row, weights):
+    """Generate HTML report for PDF download"""
+    tier_str = row["Final Tier"]
+    ifi_lbl  = row["IFI Label"]
+    em,ic,_  = LABEL_STYLE.get(ifi_lbl,("—","#666","#FFF"))
+    pl,pc    = physical_label(row["Physical Score"])
+    ifi_pct  = int(row.get("IFI Percentile",0.5)*100)
+    gate_txt = "✓ Kein Gate-Abzug" if ifi_lbl in ["ELITE","STRONG","AVERAGE"] else "⚠ Gate aktiv: max. WATCHLIST"
+    gate_c   = "#2E7D32" if ifi_lbl in ["ELITE","STRONG","AVERAGE"] else "#E65100"
+    t_bg     = {"🔥 ELITE TARGET":"#CC0000","🟢 TOP TARGET":"#1B5E20",
+                "🔵 INTERESTING":"#0D47A1","🟡 WATCHLIST":"#E65100","🔴 RISIKO":"#B71C1C"}.get(tier_str,"#333")
+
+    attr_rows = ""
+    active = [a for a,w in weights.items() if w>0]
+    if not active: active = IFI_ATTRS_EN
+    for a in IFI_ATTRS_EN:
+        pcol = f"Pct_{a}"
+        lcol = f"Lbl_{a}"
+        if pcol not in row.index: continue
+        pct = float(row[pcol])*100
+        lbl = row.get(lcol,"—")
+        em2,c2,_ = LABEL_STYLE.get(lbl,("—","#999","#FFF"))
+        is_active = a in active
+        op = "1" if is_active else "0.4"
+        bar_w = int(pct)
+        attr_rows += f"""
+        <tr style="opacity:{op};">
+            <td style="padding:5px 8px;font-size:12px;color:#333;">{EN_TO_DE.get(a,a)}</td>
+            <td style="padding:5px 8px;">
+                <div style="background:#eee;border-radius:4px;height:10px;width:200px;display:inline-block;">
+                    <div style="background:{c2};width:{bar_w}%;height:10px;border-radius:4px;"></div>
+                </div>
+            </td>
+            <td style="padding:5px 8px;font-size:12px;color:{c2};font-weight:600;">{int(pct)}% {em2}</td>
+        </tr>"""
+
+    phys_rows = ""
+    for nm,val,maxv,wgt,color in [
+        ("⚡ Topgeschwindigkeit",int(row["Speed Score"]),4,2.0,"#CC0000"),
+        ("🏃 Pressing-Intensität",int(row["OTIP Score"]),4,1.5,"#E65100"),
+        ("💥 Lauf-Intensität",int(row["BIP Score"]),4,1.0,"#1565C0"),
+        ("🚀 Explosivität",int(row["Burst Score"]),4,0.5,"#2E7D32"),
+    ]:
+        pct = int(val/maxv*100)
+        pts = val*wgt
+        phys_rows += f"""
+        <tr>
+            <td style="padding:5px 8px;font-size:12px;color:#333;">{nm}</td>
+            <td style="padding:5px 8px;">
+                <div style="background:#eee;border-radius:4px;height:10px;width:160px;display:inline-block;">
+                    <div style="background:{color};width:{pct}%;height:10px;border-radius:4px;"></div>
+                </div>
+            </td>
+            <td style="padding:5px 8px;font-size:12px;color:#555;">{val}/{maxv} · +{pts:.1f} Pkte</td>
+        </tr>"""
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+body{{font-family:Arial,sans-serif;margin:0;padding:24px;background:#fff;color:#222;}}
+.header{{background:{t_bg};color:#fff;padding:20px 24px;border-radius:10px;margin-bottom:20px;}}
+.header h1{{margin:0;font-size:22px;}} .header p{{margin:4px 0 0;opacity:0.85;font-size:13px;}}
+.tier-badge{{background:rgba(255,255,255,0.2);display:inline-block;padding:4px 12px;
+    border-radius:20px;font-size:13px;font-weight:700;margin-top:8px;}}
+.cards{{display:flex;gap:12px;margin-bottom:20px;}}
+.card{{flex:1;border:1px solid #ddd;border-top:3px solid #CC0000;border-radius:8px;
+    padding:14px;text-align:center;}}
+.card .val{{font-size:24px;font-weight:700;color:#111;}}
+.card .lbl{{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-top:4px;}}
+.section{{margin-bottom:20px;}}
+.section h2{{font-size:14px;color:#CC0000;text-transform:uppercase;letter-spacing:0.1em;
+    border-bottom:1px solid #eee;padding-bottom:6px;margin-bottom:10px;}}
+table{{width:100%;border-collapse:collapse;}}
+.footer{{text-align:center;font-size:10px;color:#aaa;margin-top:30px;border-top:1px solid #eee;padding-top:10px;}}
+@media print{{body{{padding:10px;}}}}
+</style></head><body>
+<div class="header">
+    <h1>{row["Spieler"]}</h1>
+    <p>{row.get("Verein","—")} &nbsp;·&nbsp; {row["Liga"]} &nbsp;·&nbsp; {int(row["Alter"])} Jahre &nbsp;·&nbsp; {int(row["Minuten"])} Minuten &nbsp;·&nbsp; {row.get("Spielertyp","—")}</p>
+    <div class="tier-badge">{tier_str}</div>
+</div>
+<div class="cards">
+    <div class="card"><div class="val">{row["Physical Score"]:.1f}/20</div><div class="lbl">Physical Score</div></div>
+    <div class="card"><div class="val" style="color:{pc};">{pl}</div><div class="lbl">Physical Label</div></div>
+    <div class="card"><div class="val">{ifi_pct}%</div><div class="lbl">IFI Percentile</div></div>
+    <div class="card"><div class="val" style="color:{ic};">{em}</div><div class="lbl">IFI Label</div></div>
+</div>
+<div class="cards">
+    <div class="card"><div class="val">{row["PSV-99"]:.2f} km/h</div><div class="lbl">PSV-99 (Top Speed)</div></div>
+    <div class="card"><div class="val" style="color:{"#2E7D32" if row.get("Δ PSV-99",0)>0 else "#CC0000"};">{row.get("Δ PSV-99",0):+.2f}</div><div class="lbl">Δ vs 3.Liga Median</div></div>
+    <div class="card"><div class="val">{row.get("Speed Flag","—")}</div><div class="lbl">Speed Flag</div></div>
+    <div class="card"><div class="val" style="color:{gate_c};">{gate_txt}</div><div class="lbl">IFI Gate</div></div>
+</div>
+<div class="section"><h2>⚡ Physical Breakdown</h2>
+<table>{phys_rows}</table></div>
+<div class="section"><h2>🎯 IFI Profil (Percentile im Sample)</h2>
+<table>{attr_rows}</table></div>
+<div class="footer">Jahn Regensburg · Scouting Report · Erstellt: {datetime.now().strftime("%d.%m.%Y %H:%M")} · Daten: SkillCorner + Twelve/IFI</div>
+</body></html>"""
+    return html
 
 # ── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -213,20 +345,18 @@ with st.sidebar:
     st.markdown('<div class="div"></div>', unsafe_allow_html=True)
     st.markdown('<div class="sec">🎯 IFI Gewichtung</div>', unsafe_allow_html=True)
     st.caption("0 = deaktiviert · 1–10 = relatives Gewicht")
-
     weights = {}
-    for attr_en, attr_de in zip(IFI_ATTRS_EN, IFI_ATTRS_DE):
-        weights[attr_en] = st.slider(attr_de, 0, 10, 1, 1, key=f"w_{attr_en}")
+    for a_en, a_de in zip(IFI_ATTRS_EN, IFI_ATTRS_DE):
+        weights[a_en] = st.slider(a_de, 0, 10, 1, 1, key=f"w_{a_en}")
     active_n = sum(1 for w in weights.values() if w>0)
-    st.success(f"{active_n}/8 Attribute aktiv") if active_n>0 else st.warning("Alle deaktiviert")
+    st.success(f"{active_n}/8 aktiv") if active_n>0 else st.warning("Alle deaktiviert")
 
     st.markdown('<div class="div"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="sec">Sortierung</div>', unsafe_allow_html=True)
     sort_col = st.selectbox("Sortieren nach", [
         "Physical Score","PSV-99","IFI Percentile",
         "OTIP Score","BIP Score","Burst Score","Alter","Minuten"])
 
-# ── FILTER & RECALC ───────────────────────────────────────────────────────────
+# ── FILTER ────────────────────────────────────────────────────────────────────
 df = recalc_ifi(df_raw, weights)
 mask = (df["Liga"].isin(sel_ligen) &
         (df["PSV-99"]>=psv_min) &
@@ -266,8 +396,6 @@ st.markdown("<br>", unsafe_allow_html=True)
 tab1,tab2,tab3 = st.tabs(["📋 Spieler-Liste","📊 Scatter-Plot","📖 Scoring Info"])
 
 with tab1:
-    st.markdown(f'<div style="font-size:11px;color:#666;font-family:DM Mono,monospace;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:8px;">{len(df_f)} Spieler · Sortiert nach {sort_col}</div>', unsafe_allow_html=True)
-
     if df_f.empty:
         st.info("Keine Spieler mit diesen Filtern.")
     else:
@@ -275,16 +403,11 @@ with tab1:
             "Spieler","Verein","Liga","Alter","Minuten",
             "Physical Score","Final Tier","IFI Label",
             "Speed Flag","PSV-99","Δ PSV-99",
-            "OTIP Pass","OTIP Score",
-            "BIP Level","BIP Score",
+            "OTIP Pass","OTIP Score","BIP Level","BIP Score",
             "Burst Score","Spielertyp",
-        ]].copy()
-        disp = disp.rename(columns={
-            "OTIP Score":"Pressing-Int.",
-            "BIP Score":"Lauf-Int.",
-            "Burst Score":"Explosivität",
-            "Speed Flag":"Top-Speed",
-            "OTIP Pass":"Press. Pass",
+        ]].rename(columns={
+            "OTIP Score":"Pressing-Int.","BIP Score":"Lauf-Int.",
+            "Burst Score":"Explosivität","Speed Flag":"Top-Speed","OTIP Pass":"Press.Pass",
         })
 
         tier_bg = lambda v:{
@@ -310,98 +433,118 @@ with tab1:
 
         styled=(disp.style
             .map(tier_bg,subset=["Final Tier"])
-            .map(ifi_bg, subset=["IFI Label"])
-            .map(psv_bg, subset=["PSV-99"])
-            .map(pos_d,  subset=["Δ PSV-99"])
+            .map(ifi_bg,subset=["IFI Label"])
+            .map(psv_bg,subset=["PSV-99"])
+            .map(pos_d,subset=["Δ PSV-99"])
             .format({"PSV-99":"{:.2f}","Physical Score":"{:.1f}","Δ PSV-99":"{:+.2f}"},na_rep="—"))
-        st.dataframe(styled,use_container_width=True,height=440)
 
-        # ── SPIELER DETAIL ────────────────────────────────────────────────────
-        st.markdown("---")
-        st.markdown("### 🔍 Spieler-Detail")
-        sel_name = st.selectbox("Spieler auswählen:",["— auswählen —"]+df_f["Spieler"].tolist())
+        # on_select for row click
+        event = st.dataframe(
+            styled, use_container_width=True, height=440,
+            on_select="rerun", selection_mode="single-row"
+        )
 
-        if sel_name != "— auswählen —":
-            row = df_f[df_f["Spieler"]==sel_name].iloc[0]
-            tier_str = row["Final Tier"]
-            ifi_lbl  = row["IFI Label"]
-            ifi_emoji,ifi_color,_ = LABEL_STYLE.get(ifi_lbl,("—","#666","#FFF"))
-            t_bg = TIER_COLORS.get(tier_str,"#333")
-            phys_tier_raw = row.get("Physical Tier","")
+        # Determine selected player
+        sel_name = None
+        if event and event.selection and event.selection.rows:
+            sel_idx = event.selection.rows[0]
+            if sel_idx < len(df_f):
+                sel_name = df_f.iloc[sel_idx]["Spieler"]
 
-            # Header
-            st.markdown(f"""
-            <div style="background:#181818;border:1px solid #2A2A2A;border-left:4px solid #CC0000;
-                        border-radius:8px;padding:16px 20px;margin-bottom:16px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div>
-                        <div style="font-size:20px;font-weight:800;color:#FFF;">{row["Spieler"]}</div>
-                        <div style="font-size:13px;color:#888;margin-top:4px;">
-                            {row.get("Verein","—")} · {row["Liga"]} · {int(row["Alter"])} J. · {int(row["Minuten"])} min · {row.get("Spielertyp","—")}
+        # Fallback dropdown
+        options = ["— auswählen —"] + df_f["Spieler"].tolist()
+        default_idx = options.index(sel_name) if sel_name in options else 0
+        sel_name_dd = st.selectbox("Oder Spieler auswählen:", options, index=default_idx, key="player_select")
+        if sel_name_dd != "— auswählen —":
+            sel_name = sel_name_dd
+
+        # ── DETAIL ────────────────────────────────────────────────────────────
+        if sel_name:
+            row_match = df_f[df_f["Spieler"]==sel_name]
+            if not row_match.empty:
+                row = row_match.iloc[0]
+                tier_str = row["Final Tier"]
+                ifi_lbl  = row["IFI Label"]
+                em,ic,_  = LABEL_STYLE.get(ifi_lbl,("—","#666","#FFF"))
+                t_bg     = TIER_COLORS.get(tier_str,"#333")
+                pl,pc    = physical_label(row["Physical Score"])
+                ifi_pct  = int(row.get("IFI Percentile",0.5)*100)
+                gate_txt = "✓ Kein Gate-Abzug" if ifi_lbl in ["ELITE","STRONG","AVERAGE"] else "⚠ Gate: max. WATCHLIST"
+                gate_c   = "#81C784" if ifi_lbl in ["ELITE","STRONG","AVERAGE"] else "#FFCC80"
+
+                st.markdown("---")
+                # Header
+                st.markdown(f"""
+                <div style="background:#181818;border:1px solid #2A2A2A;border-left:4px solid #CC0000;
+                            border-radius:8px;padding:16px 20px;margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-size:20px;font-weight:800;color:#FFF;">{row["Spieler"]}</div>
+                            <div style="font-size:13px;color:#888;margin-top:4px;">
+                                {row.get("Verein","—")} · {row["Liga"]} · {int(row["Alter"])} J. · {int(row["Minuten"])} min · {row.get("Spielertyp","—")}
+                            </div>
                         </div>
-                    </div>
-                    <div style="text-align:right;">
                         <div style="background:{t_bg};color:#FFF;padding:6px 14px;
                                     border-radius:20px;font-weight:700;font-size:13px;">{tier_str}</div>
                     </div>
                 </div>
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-            # 4 Cards: Physical Score | Physical Label | IFI Percentile | IFI Label
-            d1,d2,d3,d4 = st.columns(4)
-            with d1:
-                st.markdown(f'''<div class="jcard">
-                    <div class="val">{row["Physical Score"]:.1f}<span style="font-size:13px;color:#666;">/20</span></div>
-                    <div class="lbl">Physical Score</div></div>''',unsafe_allow_html=True)
-            with d2:
-                # Physical label based on score
-                ps = row["Physical Score"]
-                if   ps>=16: pl,pc="🔥 ELITE","#CC0000"
-                elif ps>=14: pl,pc="🟢 TOP","#1B5E20"
-                elif ps>=12: pl,pc="🔵 INTERESTING","#0D47A1"
-                elif ps>=9:  pl,pc="🟡 WATCHLIST","#E65100"
-                else:        pl,pc="🔴 RISIKO","#4A0D0D"
-                st.markdown(f'''<div class="jcard">
-                    <div class="val" style="font-size:16px;color:{pc};">{pl}</div>
-                    <div class="lbl">Physical Label</div></div>''',unsafe_allow_html=True)
-            with d3:
-                ifi_pct = int(row.get("IFI Percentile",0.5)*100)
-                st.markdown(f'''<div class="jcard">
-                    <div class="val">{ifi_pct}<span style="font-size:13px;color:#666;">%</span></div>
-                    <div class="lbl">IFI Percentile</div></div>''',unsafe_allow_html=True)
-            with d4:
-                st.markdown(f'''<div class="jcard">
-                    <div class="val" style="font-size:16px;color:{ifi_color};">{ifi_emoji}</div>
-                    <div class="lbl">IFI Label</div></div>''',unsafe_allow_html=True)
+                # 4 Cards
+                d1,d2,d3,d4 = st.columns(4)
+                with d1:
+                    st.markdown(f'''<div class="jcard"><div class="val">{row["Physical Score"]:.1f}<span style="font-size:13px;color:#666;">/20</span></div><div class="lbl">Physical Score</div></div>''',unsafe_allow_html=True)
+                with d2:
+                    st.markdown(f'''<div class="jcard"><div class="val" style="font-size:16px;color:{pc};">{pl}</div><div class="lbl">Physical Label</div></div>''',unsafe_allow_html=True)
+                with d3:
+                    st.markdown(f'''<div class="jcard"><div class="val">{ifi_pct}<span style="font-size:13px;color:#666;">%</span></div><div class="lbl">IFI Percentile</div></div>''',unsafe_allow_html=True)
+                with d4:
+                    st.markdown(f'''<div class="jcard"><div class="val" style="font-size:16px;color:{ic};">{em}</div><div class="lbl">IFI Label</div></div>''',unsafe_allow_html=True)
 
-            st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("<br>",unsafe_allow_html=True)
 
-            # Charts: Donut (Physical) + Radar (IFI)
-            ch1,ch2 = st.columns(2)
-            with ch1:
-                st.markdown("**🏃 Physical Breakdown**")
-                donut = make_donut(row)
-                st.plotly_chart(donut,use_container_width=True,key="donut")
-                dpv = row.get("Δ PSV-99",0)
-                dc = "#81C784" if dpv>0 else "#EF9A9A"
-                sf = str(row.get("Speed Flag","—"))
-                sf_color = {"⚡ ELITE":"#CC0000","🔵 HIGH":"#1565C0","🟡 FAST":"#0288D1","🟠 MEDIUM":"#EF6C00"}.get(sf,"#888")
-                st.markdown(f'<div style="font-size:12px;color:#888;text-align:center;">PSV-99: <b style="color:#FFF;">{row["PSV-99"]:.2f} km/h</b> &nbsp;<span style="color:{sf_color};">{sf}</span>&nbsp;·&nbsp; Δ vs 3.Liga: <b style="color:{dc};">{dpv:+.2f}</b></div>',unsafe_allow_html=True)
+                # Charts
+                ch1,ch2 = st.columns([1,1])
+                with ch1:
+                    bars = make_physical_bars(row)
+                    st.plotly_chart(bars, use_container_width=True, key="bars")
+                    sf = str(row.get("Speed Flag","—"))
+                    sf_c = {"⚡ ELITE":"#CC0000","🔵 HIGH":"#1565C0","🟡 FAST":"#0288D1","🟠 MEDIUM":"#EF6C00"}.get(sf,"#888")
+                    dpv = row.get("Δ PSV-99",0)
+                    dc = "#81C784" if dpv>0 else "#EF9A9A"
+                    st.markdown(f'<div style="font-size:12px;color:#888;text-align:center;">PSV-99: <b style="color:#FFF;">{row["PSV-99"]:.2f} km/h</b> <span style="color:{sf_c};">{sf}</span> · Δ vs 3.Liga: <b style="color:{dc};">{dpv:+.2f}</b> · {gate_txt} <span style="color:{gate_c};">●</span></div>', unsafe_allow_html=True)
 
-            with ch2:
-                st.markdown("**🎯 IFI Radar (Percentile im Sample)**")
-                radar = make_radar(row, weights)
-                if radar:
-                    st.plotly_chart(radar,use_container_width=True,key="radar")
-                    gate_txt = "✓ kein Gate-Abzug" if ifi_lbl in ["ELITE","STRONG","AVERAGE"] else "⚠ Gate: max. WATCHLIST"
-                    gate_c   = "#81C784" if ifi_lbl in ["ELITE","STRONG","AVERAGE"] else "#FFCC80"
-                    st.markdown(f'<div style="font-size:12px;color:{gate_c};text-align:center;">{gate_txt}</div>',unsafe_allow_html=True)
-                else:
-                    st.info("Keine IFI-Daten verfügbar")
+                with ch2:
+                    radar = make_radar(row, weights)
+                    if radar:
+                        st.plotly_chart(radar, use_container_width=True, key="radar")
 
-        st.markdown("<br>",unsafe_allow_html=True)
-        st.download_button("⬇️ Export CSV",df_f.to_csv(index=False).encode("utf-8"),"jahn_scouting.csv","text/csv")
+                # Downloads
+                st.markdown("<br>",unsafe_allow_html=True)
+                dl1,dl2,dl3 = st.columns(3)
+                with dl1:
+                    html_report = make_pdf_report(row, weights)
+                    st.download_button(
+                        "📄 Profil als HTML (→ PDF drucken)",
+                        html_report.encode("utf-8"),
+                        f"Profil_{row['Spieler'].replace(' ','_')}.html",
+                        "text/html", use_container_width=True
+                    )
+                with dl2:
+                    row_csv = df_f[df_f["Spieler"]==sel_name].to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "📊 Spielerdaten als CSV",
+                        row_csv,
+                        f"Daten_{row['Spieler'].replace(' ','_')}.csv",
+                        "text/csv", use_container_width=True
+                    )
+                with dl3:
+                    st.download_button(
+                        "📋 Gesamtliste CSV",
+                        df_f.to_csv(index=False).encode("utf-8"),
+                        "jahn_scouting.csv","text/csv",
+                        use_container_width=True
+                    )
 
 with tab2:
     num_cols=[c for c in ["PSV-99","Physical Score","IFI Percentile","OTIP Score",
@@ -416,13 +559,13 @@ with tab2:
     with c4: cb=st.selectbox("Farbe",["Final Tier","Speed Flag","IFI Label","Spielertyp","Liga"],index=0)
     if not df_f.empty:
         try:
-            pdf=df_f.dropna(subset=[x,y]).copy()
+            pdf_p=df_f.dropna(subset=[x,y]).copy()
             cm=TIER_COLORS if cb=="Final Tier" else(SPEED_COLORS if cb=="Speed Flag" else None)
             sv=None
-            if sz!="—" and sz in pdf.columns:
-                s=pd.to_numeric(pdf[sz],errors="coerce").fillna(0)
+            if sz!="—" and sz in pdf_p.columns:
+                s=pd.to_numeric(pdf_p[sz],errors="coerce").fillna(0)
                 sv=(((s-s.min())/(s.max()-s.min()+0.001))*20+6).tolist()
-            fig=px.scatter(pdf,x=x,y=y,color=cb,color_discrete_map=cm,hover_name="Spieler",
+            fig=px.scatter(pdf_p,x=x,y=y,color=cb,color_discrete_map=cm,hover_name="Spieler",
                            hover_data={"Verein":True,"Liga":True,"Alter":True,
                                        "Physical Score":":.1f","PSV-99":":.2f",
                                        "IFI Label":True,"OTIP Pass":True,cb:False},
@@ -452,27 +595,18 @@ with tab3:
 | 🚀 Explosivität (0–4) | ×0.5 | 2 |
 | **Maximum** | | **20** |
 
-**Tier-Cutoffs:** ≥16 🔥 ELITE · ≥14 🟢 TOP · ≥12 🔵 INTERESTING · ≥9 🟡 WATCHLIST · <9 🔴 RISIKO
+**Tier-Cutoffs:** ≥16 🔥 ELITE · ≥14 🟢 TOP · ≥12 🔵 INT · ≥9 🟡 WATCHLIST · <9 🔴 RISIKO
         """)
     with cb_:
-        st.markdown("### IFI Percentile-System")
+        st.markdown("### IFI System")
         st.markdown("""
-| Percentile | Label | Gate |
+| Percentile | Label | IFI Gate |
 |---|---|---|
-| Top 10% (≥P90) | 🔴 ELITE | ✓ kein Abzug |
-| Top 25% (≥P75) | 🟠 STRONG | ✓ kein Abzug |
-| Top 50% (≥P50) | 🟡 AVERAGE | ✓ kein Abzug |
-| Top 75% (≥P25) | 🔵 BELOW | ⚠ max. WATCHLIST |
+| Top 10% | 🔴 ELITE | ✓ kein Abzug |
+| Top 25% | 🟠 STRONG | ✓ kein Abzug |
+| Top 50% | 🟡 AVERAGE | ✓ kein Abzug |
+| Top 75% | 🔵 BELOW | ⚠ max. WATCHLIST |
 | Rest | ⚫ WEAK | ⚠ max. WATCHLIST |
 
-**8 Attribute:**
-Strafraum-Gefahr · Dribbling · Abschluss · Spielbeteiligung
-Passqualität · Pressing · Vorlagenqualität · Laufqualität
+**8 Attribute:** Strafraum-Gefahr · Dribbling · Abschluss · Spielbeteiligung · Passqualität · Pressing · Vorlagenqualität · Laufqualität
         """)
-    st.markdown("---")
-    st.dataframe(pd.DataFrame([
-        {"Metrik":"PSV-99 Median (3.Liga)","Wert":"29.45 km/h","Layer":"Topgeschwindigkeit"},
-        {"Metrik":"HSR P60BIP","Wert":"789.6m","Layer":"Lauf-Intensität"},
-        {"Metrik":"HSR OTIP P30","Wert":"386.9m","Layer":"Pressing-Intensität"},
-        {"Metrik":"Time to HSR","Wert":"0.66s","Layer":"Explosivität"},
-    ]),use_container_width=True,hide_index=True)
