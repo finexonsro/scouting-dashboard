@@ -410,7 +410,7 @@ st.markdown('<div class="div" style="margin:12px 0 18px;"></div>', unsafe_allow_
 kpi_cols = st.columns(6)
 kpis = [
     (len(df_f),"Spieler gesamt"),
-    (len(df_f[df_f["Final Tier"].isin(["🔥 ELITE TARGET","🟢 TOP TARGET"])]),"Elite + Top"),
+    (len(df_f[df_f["Physical Tier"].isin(["🔥 ELITE TARGET","🟢 TOP TARGET"])]),"Elite + Top"),
     (len(df_f[df_f["IFI Label"]=="ELITE"]),"IFI Elite 🔴"),
     (f"{df_f['PSV-99'].max():.2f}" if len(df_f) else "—","Höchste PSV-99"),
     (f"{df_f['Physical Score'].max():.1f}" if len(df_f) else "—","Bester Physical /20"),
