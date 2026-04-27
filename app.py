@@ -551,6 +551,22 @@ with tab1:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
+                # Transfermarkt link
+                tm_query = row["Spieler"].replace(" ", "+")
+                tm_url = f"https://www.transfermarkt.de/schnellsuche/ergebnis/schnellsuche?query={tm_query}"
+                st.markdown(
+                    f'''<a href="{tm_url}" target="_blank" style="
+                        display:inline-block;background:#1a3c6e;color:#fff;
+                        padding:7px 16px;border-radius:6px;font-size:12px;
+                        font-weight:600;text-decoration:none;letter-spacing:0.05em;
+                        border:1px solid #2a5298;">
+                        🔗 Auf Transfermarkt suchen
+                    </a>''',
+                    unsafe_allow_html=True
+                )
+
+                st.markdown("<br>", unsafe_allow_html=True)
+
                 # Physical bars (left) + Radar (right)
                 ch1, ch2 = st.columns([1,1])
                 with ch1:
