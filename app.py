@@ -508,7 +508,8 @@ with tab1:
 
         # ── DETAIL ────────────────────────────────────────────────────────────
         if sel_name:
-            row_m = df_f[df_f["Spieler"]==sel_name]
+            # Use full dataset so detail works with global search
+            row_m = df[df["Spieler"]==sel_name]
             if not row_m.empty:
                 row = row_m.iloc[0]
                 tier_str = row["Final Tier"]
