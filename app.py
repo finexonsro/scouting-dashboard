@@ -423,19 +423,26 @@ for col,(val,lbl) in zip(kpi_cols,kpis):
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
+# Global search — above tabs, searches full dataset
+global_search = st.text_input(
+    "🔍 Spieler suchen (alle Spieler)",
+    placeholder="Name eingeben — durchsucht alle 551 Spieler unabhängig von Filtern...",
+    key="global_search"
+)
+
 tab1,tab2,tab3 = st.tabs(["📋 Spieler-Liste","📊 Scatter-Plot","📖 Scoring Info"])
 
 with tab1:
     if df_f.empty:
         st.info("Keine Spieler mit diesen Filtern.")
     else:
-        # Search bar
-        search = st.text_input("🔍 Spieler suchen", placeholder="Name eingeben...", key="search")
-        if search:
-            df_display = df_f[df_f["Spieler"].str.contains(search, case=False, na=False)]
+        # Global search overrides filters
+        if global_search:
+            df_display = df[df["Spieler"].str.contains(global_search, case=False, na=False)]
+            st.markdown(f'<div style="font-size:11px;color:#CC0000;font-family:DM Mono,monospace;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">🔍 SUCHE: {len(df_display)} Treffer für "{global_search}" — Filter ignoriert</div>', unsafe_allow_html=True)
         else:
             df_display = df_f
-        st.markdown(f'<div style="font-size:11px;color:#666;font-family:DM Mono,monospace;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">{len(df_display)} Spieler · Sortiert nach {sort_col}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:11px;color:#666;font-family:DM Mono,monospace;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">{len(df_display)} Spieler · Sortiert nach {sort_col}</div>', unsafe_allow_html=True)
 
         disp = df_display[[
             "Spieler","Verein","Liga","Alter","Minuten",
@@ -490,7 +497,7 @@ with tab1:
                 sel_name = df_display.iloc[idx]["Spieler"]
 
         # If search has exactly one result → auto-select
-        if search and len(df_display) == 1:
+        if global_search and len(df_display) == 1:
             sel_name = df_display.iloc[0]["Spieler"]
 
         options = ["— auswählen —"] + df_f["Spieler"].tolist()
