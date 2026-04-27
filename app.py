@@ -429,7 +429,15 @@ with tab1:
     if df_f.empty:
         st.info("Keine Spieler mit diesen Filtern.")
     else:
-        disp = df_f[[
+        # Search bar
+        search = st.text_input("🔍 Spieler suchen", placeholder="Name eingeben...", key="search")
+        if search:
+            df_display = df_f[df_f["Spieler"].str.contains(search, case=False, na=False)]
+        else:
+            df_display = df_f
+        st.markdown(f'<div style="font-size:11px;color:#666;font-family:DM Mono,monospace;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;">{len(df_display)} Spieler · Sortiert nach {sort_col}</div>', unsafe_allow_html=True)
+
+        disp = df_display[[
             "Spieler","Verein","Liga","Alter","Minuten",
             "Physical Score","Final Tier","IFI Label",
             "Speed Flag","PSV-99","Δ PSV-99",
@@ -478,8 +486,12 @@ with tab1:
         sel_name = None
         if event and event.selection and event.selection.rows:
             idx = event.selection.rows[0]
-            if idx < len(df_f):
-                sel_name = df_f.iloc[idx]["Spieler"]
+            if idx < len(df_display):
+                sel_name = df_display.iloc[idx]["Spieler"]
+
+        # If search has exactly one result → auto-select
+        if search and len(df_display) == 1:
+            sel_name = df_display.iloc[0]["Spieler"]
 
         options = ["— auswählen —"] + df_f["Spieler"].tolist()
         default_idx = options.index(sel_name) if sel_name in options else 0
